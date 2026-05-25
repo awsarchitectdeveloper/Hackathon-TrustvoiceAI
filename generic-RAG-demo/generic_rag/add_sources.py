@@ -115,6 +115,7 @@ def main():
                 chunk_overlap=settings.pdf.chunk_overlap,
                 add_start_index=settings.pdf.add_start_index,
                 unstructerd=settings.pdf.unstructured,
+                settings=settings,
             )
             logger.info("Successfully processed PDF files.")
         except Exception as e:
