@@ -11,6 +11,7 @@ from generic_rag.graphs.cond_ret_gen import CondRetGenLangGraph
 from generic_rag.graphs.ret_gen import RetGenLangGraph
 from generic_rag.parsers.config import AppSettings, load_settings
 from generic_rag.backend.summarization import summarize_text
+from generic_rag.ingestion.runtime_ingest import ingest_uploaded_files
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from generic_rag.backend.realtime import RealtimeSTT, TTS_model
@@ -124,6 +125,26 @@ async def on_chat_end():
 @cl.on_message
 async def on_message(message: cl.Message):
     config = {"configurable": {"thread_id": cl.user_session.get("id")}}
+
+    uploaded_files = [
+        file
+        for file in message.elements
+        if getattr(file, "path", None) and Path(file.path).suffix.lower() in {".pdf", ".txt", ".md"}
+    ]
+
+    if uploaded_files:
+        ingest_statuses = ingest_uploaded_files([file.path for file in uploaded_files], settings=settings, vector_store=vector_store)
+        status_lines = []
+        for status in ingest_statuses:
+            filename = Path(status["path"]).name
+            if status["status"] == "ingested":
+                status_lines.append(f"- ✅ {filename}: ingested {status['chunks']} chunk(s)")
+            elif status["status"] == "failed":
+                status_lines.append(f"- ❌ {filename}: {status.get('error', 'unknown error')}")
+            else:
+                status_lines.append(f"- ⚠️ {filename}: {status.get('error', 'skipped')}")
+
+        await cl.Message(content="Uploaded file ingestion results:\n" + "\n".join(status_lines)).send()
 
     if settings.use_summarization:
         # PDF Upload
