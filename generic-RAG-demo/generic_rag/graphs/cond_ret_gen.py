@@ -20,6 +20,12 @@ logger = logging.getLogger("sogeti-rag")
 
 DEFAULT_NO_EVIDENCE_RESPONSE = "I could not find this in the uploaded sources."
 MIN_RELEVANCE_SCORE = 0.2
+STRONG_EVIDENCE_SCORE = 0.6
+STRONG_EVIDENCE_MIN_COUNT = 2
+
+EVIDENCE_STRONG = "Strong"
+EVIDENCE_WEAK = "Weak"
+EVIDENCE_NOT_FOUND = "Not found"
 
 
 class CondRetGenLangGraph:
@@ -52,6 +58,7 @@ class CondRetGenLangGraph:
 
         self.last_retrieved_docs = {}
         self.last_retrieved_sources = set()
+        self.last_evidence_status = EVIDENCE_NOT_FOUND
 
     async def stream(self, message: str, config: RunnableConfig | None = None) -> AsyncGenerator[Any, Any]:
         async for llm_response, metadata in self.graph.astream(
@@ -95,9 +102,12 @@ class CondRetGenLangGraph:
             scored_docs = []
 
         if scored_docs:
-            retrieved_docs = [doc for doc, _ in scored_docs]
-            has_evidence = any(score >= MIN_RELEVANCE_SCORE for _, score in scored_docs)
-            if not has_evidence:
+            retrieved_docs = []
+            for doc, score in scored_docs:
+                if score >= MIN_RELEVANCE_SCORE:
+                    doc.metadata["score"] = float(score)
+                    retrieved_docs.append(doc)
+            if not retrieved_docs:
                 return DEFAULT_NO_EVIDENCE_RESPONSE, []
         else:
             retrieved_docs = vector_store.similarity_search(full_user_content, k=4)
@@ -114,6 +124,7 @@ class CondRetGenLangGraph:
         # Reset last retrieved docs
         self.last_retrieved_docs = {}
         self.last_retrieved_sources = set()
+        self.last_evidence_status = EVIDENCE_NOT_FOUND
 
         llm_with_tools = self.chat_model.bind_tools([self._retrieve])
         response = llm_with_tools.invoke(state["messages"])
@@ -133,7 +144,25 @@ class CondRetGenLangGraph:
         # format into prompt
         docs_content = "\n\n".join(doc.content for doc in tool_messages)
         if not docs_content.strip() or docs_content.strip() == DEFAULT_NO_EVIDENCE_RESPONSE:
+            self.last_evidence_status = EVIDENCE_NOT_FOUND
             return {"messages": [AIMessage(content=DEFAULT_NO_EVIDENCE_RESPONSE)]}
+
+        sources_count = len(tool_messages)
+        top_score = 0.0
+        for message in tool_messages:
+            artifact = getattr(message, "artifact", None)
+            if not artifact:
+                continue
+            for doc in artifact:
+                score = doc.metadata.get("score")
+                if isinstance(score, (int, float)):
+                    top_score = max(top_score, float(score))
+
+        self.last_evidence_status = (
+            EVIDENCE_STRONG
+            if sources_count >= STRONG_EVIDENCE_MIN_COUNT and top_score >= STRONG_EVIDENCE_SCORE
+            else EVIDENCE_WEAK
+        )
 
         system_message_content = self.system_prompt + f"\n\n{docs_content}"
         conversation_messages = [

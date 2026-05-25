@@ -17,6 +17,12 @@ logger = logging.getLogger("sogeti-rag")
 
 DEFAULT_NO_EVIDENCE_RESPONSE = "I could not find this in the uploaded sources."
 MIN_RELEVANCE_SCORE = 0.2
+STRONG_EVIDENCE_SCORE = 0.6
+STRONG_EVIDENCE_MIN_COUNT = 2
+
+EVIDENCE_STRONG = "Strong"
+EVIDENCE_WEAK = "Weak"
+EVIDENCE_NOT_FOUND = "Not found"
 
 
 class State(TypedDict):
@@ -48,6 +54,7 @@ class RetGenLangGraph:
 
         self.graph = graph_builder.compile(memory)
         self.last_retrieved_docs = []
+        self.last_evidence_status = EVIDENCE_NOT_FOUND
 
     async def stream(self, message: str, config: RunnableConfig | None = None) -> AsyncGenerator[Any, Any]:
         async for response, _ in self.graph.astream({"question": message}, stream_mode="messages", config=config):
@@ -56,8 +63,16 @@ class RetGenLangGraph:
     def _retrieve(self, state: State) -> dict[str, list]:
         logger.debug(f"querying VS for: {state['question']}")
 
+        self.last_evidence_status = EVIDENCE_NOT_FOUND
+
         if self.compression_model:
             self.last_retrieved_docs = self.compression_model.invoke(state["question"])
+            if not self.last_retrieved_docs:
+                return {"context": []}
+
+            self.last_evidence_status = (
+                EVIDENCE_STRONG if len(self.last_retrieved_docs) >= STRONG_EVIDENCE_MIN_COUNT else EVIDENCE_WEAK
+            )
             return {"context": self.last_retrieved_docs}
 
         try:
@@ -67,10 +82,24 @@ class RetGenLangGraph:
 
         if scored_docs:
             self.last_retrieved_docs = [doc for doc, _ in scored_docs]
-            has_evidence = any(score >= MIN_RELEVANCE_SCORE for _, score in scored_docs)
-            return {"context": self.last_retrieved_docs if has_evidence else []}
+            qualifying_scores = [score for _, score in scored_docs if score >= MIN_RELEVANCE_SCORE]
+            if not qualifying_scores:
+                self.last_evidence_status = EVIDENCE_NOT_FOUND
+                return {"context": []}
+
+            top_score = max(qualifying_scores)
+            self.last_evidence_status = (
+                EVIDENCE_STRONG
+                if len(qualifying_scores) >= STRONG_EVIDENCE_MIN_COUNT and top_score >= STRONG_EVIDENCE_SCORE
+                else EVIDENCE_WEAK
+            )
+            return {"context": [doc for doc, score in scored_docs if score >= MIN_RELEVANCE_SCORE]}
 
         self.last_retrieved_docs = self.vector_store.similarity_search(state["question"])
+        if self.last_retrieved_docs:
+            self.last_evidence_status = (
+                EVIDENCE_STRONG if len(self.last_retrieved_docs) >= STRONG_EVIDENCE_MIN_COUNT else EVIDENCE_WEAK
+            )
         return {"context": self.last_retrieved_docs}
 
     def _generate(self, state: State) -> dict[str, list]:
