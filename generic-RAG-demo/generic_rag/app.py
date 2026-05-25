@@ -54,6 +54,15 @@ graph = None
 react_agent = None
 
 
+def _get_evidence_status_for_graph(current_graph) -> str | None:
+    status = getattr(current_graph, "last_evidence_status", None)
+    return status if isinstance(status, str) else None
+
+
+def _is_not_found_response(response_text: str) -> bool:
+    return response_text.strip() == "I could not find this in the uploaded sources."
+
+
 async def initialize_graph_once():
     """Initialize the graph exactly once"""
     global graph, react_agent
@@ -167,9 +176,14 @@ async def on_message(message: cl.Message):
     async for response in graph.stream(message.content, config=config):
         await chainlit_response.stream_token(response)
 
-    if isinstance(graph, RetGenLangGraph):
+    evidence_status = _get_evidence_status_for_graph(graph)
+    if evidence_status:
+        await chainlit_response.stream_token(f"\n\nStatus: {evidence_status}")
+
+    is_not_found = _is_not_found_response(chainlit_response.content)
+    if isinstance(graph, RetGenLangGraph) and not is_not_found:
         await add_sources(chainlit_response, graph.get_last_pdf_sources(), graph.get_last_web_sources())
-    if isinstance(graph, CondRetGenLangGraph):
+    if isinstance(graph, CondRetGenLangGraph) and not is_not_found:
         await add_sources(chainlit_response, graph.last_retrieved_docs, graph.last_retrieved_sources)
 
     await chainlit_response.send()
@@ -261,9 +275,14 @@ if settings.voice_chat:
                 async for response in graph.stream(user_content, config=config):
                     await chainlit_response.stream_token(response)
 
-                if isinstance(graph, RetGenLangGraph):
+                evidence_status = _get_evidence_status_for_graph(graph)
+                if evidence_status:
+                    await chainlit_response.stream_token(f"\n\nStatus: {evidence_status}")
+
+                is_not_found = _is_not_found_response(chainlit_response.content)
+                if isinstance(graph, RetGenLangGraph) and not is_not_found:
                     await add_sources(chainlit_response, graph.get_last_pdf_sources(), graph.get_last_web_sources())
-                if isinstance(graph, CondRetGenLangGraph):
+                if isinstance(graph, CondRetGenLangGraph) and not is_not_found:
                     await add_sources(chainlit_response, graph.last_retrieved_docs, graph.last_retrieved_sources)
 
                 await chainlit_response.send()
