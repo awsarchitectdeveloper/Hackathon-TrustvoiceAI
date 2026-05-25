@@ -6,7 +6,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.retrievers import BaseRetriever
 from langgraph.checkpoint.memory import MemorySaver
@@ -14,6 +14,9 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import List, TypedDict
 
 logger = logging.getLogger("sogeti-rag")
+
+DEFAULT_NO_EVIDENCE_RESPONSE = "I could not find this in the uploaded sources."
+MIN_RELEVANCE_SCORE = 0.2
 
 
 class State(TypedDict):
@@ -52,13 +55,28 @@ class RetGenLangGraph:
 
     def _retrieve(self, state: State) -> dict[str, list]:
         logger.debug(f"querying VS for: {state['question']}")
+
         if self.compression_model:
             self.last_retrieved_docs = self.compression_model.invoke(state["question"])
-        else:
-            self.last_retrieved_docs = self.vector_store.similarity_search(state["question"])
+            return {"context": self.last_retrieved_docs}
+
+        try:
+            scored_docs = self.vector_store.similarity_search_with_relevance_scores(state["question"], k=4)
+        except Exception:
+            scored_docs = []
+
+        if scored_docs:
+            self.last_retrieved_docs = [doc for doc, _ in scored_docs]
+            has_evidence = any(score >= MIN_RELEVANCE_SCORE for _, score in scored_docs)
+            return {"context": self.last_retrieved_docs if has_evidence else []}
+
+        self.last_retrieved_docs = self.vector_store.similarity_search(state["question"])
         return {"context": self.last_retrieved_docs}
 
     def _generate(self, state: State) -> dict[str, list]:
+        if not state["context"]:
+            return {"answer": [AIMessage(content=DEFAULT_NO_EVIDENCE_RESPONSE)]}
+
         docs_content = "\n\n".join(doc.page_content for doc in state["context"])
         system_message_content = self.system_prompt + f"\n\n{docs_content}"
 

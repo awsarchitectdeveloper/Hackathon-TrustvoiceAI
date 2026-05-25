@@ -32,7 +32,7 @@ system_prompt = (
     "If the question is in Dutch, answer in Dutch. If the question is in English, answer in English. "
     "You MUST ONLY use the provided context to answer the question. "
     "Do NOT use any other knowledge outside the provided context. "
-    "If the answer is not in the context, respond with exactly: 'I don't know.' "
+    "If the answer is not in the context, respond with exactly: 'I could not find this in the uploaded sources.' "
     "Do NOT make up information. "
     "Do NOT reference any document unless it is explicitly mentioned in the provided context."
 )
