@@ -1,0 +1,6 @@
+[project]
+name = "TrustVoice AI"
+
+[UI]
+name = "TrustVoice AI"
+description = "Voice-enabled enterprise answers with citations"

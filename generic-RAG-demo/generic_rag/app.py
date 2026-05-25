@@ -18,7 +18,7 @@ from generic_rag.backend.realtime import RealtimeSTT, TTS_model
 from generic_rag.graphs.react_agent import ReactAgentMCP
 
 
-logger = logging.getLogger("sogeti-rag")
+logger = logging.getLogger("trustvoice-ai-rag")
 logger.setLevel(logging.DEBUG)
 
 # Suppress Azure HTTP logging
@@ -153,7 +153,7 @@ async def on_message(message: cl.Message):
             else:
                 status_lines.append(f"- ⚠️ {filename}: {status.get('error', 'skipped')}")
 
-        await cl.Message(content="Uploaded file ingestion results:\n" + "\n".join(status_lines)).send()
+        await cl.Message(content="## Upload\n" + "\n".join(status_lines)).send()
 
     if settings.use_summarization:
         # PDF Upload
@@ -171,38 +171,64 @@ async def on_message(message: cl.Message):
                 await cl.Message(content=f"**Summary of document contents:**\n{summary}").send()
                 return
 
-    chainlit_response = cl.Message(content="")
+    response_chunks = []
 
     async for response in graph.stream(message.content, config=config):
-        await chainlit_response.stream_token(response)
+        response_chunks.append(response)
 
-    evidence_status = _get_evidence_status_for_graph(graph)
-    if evidence_status:
-        await chainlit_response.stream_token(f"\n\nStatus: {evidence_status}")
+    answer_text = "".join(response_chunks).strip()
+    evidence_status = _get_evidence_status_for_graph(graph) or "Not provided"
 
-    is_not_found = _is_not_found_response(chainlit_response.content)
+    citations_text = "None"
+    is_not_found = _is_not_found_response(answer_text)
+
+    chainlit_response = cl.Message(content="")
     if isinstance(graph, RetGenLangGraph) and not is_not_found:
-        await add_sources(chainlit_response, graph.get_last_pdf_sources(), graph.get_last_web_sources())
+        citations_text = await add_sources(chainlit_response, graph.get_last_pdf_sources(), graph.get_last_web_sources())
     if isinstance(graph, CondRetGenLangGraph) and not is_not_found:
-        await add_sources(chainlit_response, graph.last_retrieved_docs, graph.last_retrieved_sources)
+        citations_text = await add_sources(chainlit_response, graph.last_retrieved_docs, graph.last_retrieved_sources)
 
+    agent_steps = getattr(graph, "last_agent_steps", None)
+    if isinstance(agent_steps, list) and agent_steps:
+        steps_text = "\n".join(f"- {step}" for step in agent_steps)
+    else:
+        steps_text = "- No explicit agent steps were returned."
+
+    formatted_response = (
+        "# TrustVoice AI\n"
+        "*Voice-enabled enterprise answers with citations*\n\n"
+        "## Chat\n"
+        f"{answer_text}\n\n"
+        "## Citations\n"
+        f"{citations_text}\n\n"
+        "## Evidence Status\n"
+        f"{evidence_status}\n\n"
+        "## Agent Steps\n"
+        f"{steps_text}"
+    )
+
+    chainlit_response.content = formatted_response
     await chainlit_response.send()
 
 
-async def add_sources(chainlit_response: cl.Message, pdf_sources: dict, web_sources: set | list) -> None:
+async def add_sources(chainlit_response: cl.Message, pdf_sources: dict, web_sources: set | list) -> str:
+    citation_lines = []
+
     if len(pdf_sources) > 0:
-        await chainlit_response.stream_token("\n\nThe following PDF source were consulted:\n")
+        citation_lines.append("### PDF Sources")
         for source, page_numbers in pdf_sources.items():
             filename = Path(source).name
-            await chainlit_response.stream_token(f"- {filename} on page(s): {sorted(page_numbers)}\n")
+            citation_lines.append(f"- {filename} on page(s): {sorted(page_numbers)}")
             chainlit_response.elements.append(
                 cl.Pdf(name=filename, display="side", path=source, page=sorted(page_numbers)[0])
             )
 
     if len(web_sources) > 0:
-        await chainlit_response.stream_token("\n\nThe following web sources were consulted:\n")
+        citation_lines.append("### Web Sources")
         for source in web_sources:
-            await chainlit_response.stream_token(f"- {source}\n")
+            citation_lines.append(f"- {source}")
+
+    return "\n".join(citation_lines) if citation_lines else "None"
 
 
 async def detect_summarization_intent(query: str, client) -> bool:
