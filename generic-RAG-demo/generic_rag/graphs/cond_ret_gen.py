@@ -8,7 +8,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
@@ -17,6 +17,9 @@ from langgraph.prebuilt import InjectedStore, ToolNode, tools_condition
 from typing_extensions import Annotated
 
 logger = logging.getLogger("sogeti-rag")
+
+DEFAULT_NO_EVIDENCE_RESPONSE = "I could not find this in the uploaded sources."
+MIN_RELEVANCE_SCORE = 0.2
 
 
 class CondRetGenLangGraph:
@@ -86,8 +89,22 @@ class CondRetGenLangGraph:
         logger.debug(f"user content: {full_user_content}")
 
         retrieved_docs = []
-        retrieved_docs = vector_store.similarity_search(query, k=4)
-        retrieved_docs = vector_store.similarity_search(full_user_content, k=4)
+        try:
+            scored_docs = vector_store.similarity_search_with_relevance_scores(full_user_content, k=4)
+        except Exception:
+            scored_docs = []
+
+        if scored_docs:
+            retrieved_docs = [doc for doc, _ in scored_docs]
+            has_evidence = any(score >= MIN_RELEVANCE_SCORE for _, score in scored_docs)
+            if not has_evidence:
+                return DEFAULT_NO_EVIDENCE_RESPONSE, []
+        else:
+            retrieved_docs = vector_store.similarity_search(full_user_content, k=4)
+
+        if not retrieved_docs:
+            return DEFAULT_NO_EVIDENCE_RESPONSE, []
+
         serialized = "\n\n".join((f"Source: {doc.metadata}\nContent: {doc.page_content}") for doc in retrieved_docs)
 
         return serialized, retrieved_docs
@@ -115,6 +132,9 @@ class CondRetGenLangGraph:
 
         # format into prompt
         docs_content = "\n\n".join(doc.content for doc in tool_messages)
+        if not docs_content.strip() or docs_content.strip() == DEFAULT_NO_EVIDENCE_RESPONSE:
+            return {"messages": [AIMessage(content=DEFAULT_NO_EVIDENCE_RESPONSE)]}
+
         system_message_content = self.system_prompt + f"\n\n{docs_content}"
         conversation_messages = [
             message
