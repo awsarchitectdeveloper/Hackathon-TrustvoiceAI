@@ -63,6 +63,39 @@ def _is_not_found_response(response_text: str) -> bool:
     return response_text.strip() == "I could not find this in the uploaded sources."
 
 
+def _build_agent_steps(evidence_status: str, is_not_found: bool) -> list[str]:
+    verify_step = (
+        "Verify: Evidence was weak or missing."
+        if is_not_found or evidence_status in {"Not found", "Not provided"}
+        else f"Verify: Evidence quality = {evidence_status}."
+    )
+    answer_step = (
+        "Answer: I could not find this in the uploaded sources."
+        if is_not_found
+        else "Answer: Return grounded answer with citations."
+    )
+    return [
+        "Plan: Understand the user question.",
+        "Search: Retrieve the most relevant chunks.",
+        verify_step,
+        answer_step,
+    ]
+
+
+def build_source_snippets(retrieved_docs: list, max_snippets: int = 3, snippet_len: int = 220) -> str:
+    if not retrieved_docs:
+        return "None"
+
+    snippet_lines = []
+    for index, doc in enumerate(retrieved_docs[:max_snippets], start=1):
+        source = Path(doc.metadata.get("source", "unknown source")).name
+        page = doc.metadata.get("page", doc.metadata.get("page_number", "?"))
+        snippet = " ".join(doc.page_content.split())[:snippet_len]
+        snippet_lines.append(f"- [{index}] {source} (page {page}): {snippet}...")
+
+    return "\n".join(snippet_lines)
+
+
 async def initialize_graph_once():
     """Initialize the graph exactly once"""
     global graph, react_agent
@@ -188,11 +221,9 @@ async def on_message(message: cl.Message):
     if isinstance(graph, CondRetGenLangGraph) and not is_not_found:
         citations_text = await add_sources(chainlit_response, graph.last_retrieved_docs, graph.last_retrieved_sources)
 
-    agent_steps = getattr(graph, "last_agent_steps", None)
-    if isinstance(agent_steps, list) and agent_steps:
-        steps_text = "\n".join(f"- {step}" for step in agent_steps)
-    else:
-        steps_text = "- No explicit agent steps were returned."
+    retrieved_docs = getattr(graph, "last_retrieved_docs", [])
+    snippets_text = "None" if is_not_found else build_source_snippets(retrieved_docs)
+    steps_text = "\n".join(f"- {step}" for step in _build_agent_steps(evidence_status, is_not_found))
 
     formatted_response = (
         "# TrustVoice AI\n"
@@ -201,6 +232,8 @@ async def on_message(message: cl.Message):
         f"{answer_text}\n\n"
         "## Citations\n"
         f"{citations_text}\n\n"
+        "## Source Snippets\n"
+        f"{snippets_text}\n\n"
         "## Evidence Status\n"
         f"{evidence_status}\n\n"
         "## Agent Steps\n"
