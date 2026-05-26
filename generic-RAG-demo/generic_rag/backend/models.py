@@ -11,6 +11,7 @@ from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace, Huggin
 
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings, ChatOpenAI, OpenAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_together import ChatTogether, TogetherEmbeddings
 from generic_rag.parsers.config import AppSettings, ChatBackend, EmbeddingBackend
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -67,11 +68,14 @@ def get_chat_model(settings: AppSettings) -> BaseChatModel:
             raise ValueError("OpenAI chat backend selected, but 'openai' configuration section is missing.")
         if not settings.openai.chat_model:
             raise ValueError("OpenAI configuration requires 'chat_model'.")
-        if "OPENAI_API_KEY" not in os.environ:
+        if "GEMINI_API_KEY" not in os.environ:
             raise ValueError(
-                "The environment variable 'OPENAI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
+                "The environment variable 'GEMINI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
             )
-        return ChatOpenAI(model=settings.openai.chat_model)
+        return ChatGoogleGenerativeAI(
+            model=settings.openai.chat_model,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+        )
 
     if settings.chat_backend == ChatBackend.google_vertex:
         if not settings.google_vertex:
@@ -182,11 +186,14 @@ def get_embedding_model(settings: AppSettings) -> Embeddings:
             raise ValueError("OpenAI embedding backend selected, but 'openai' configuration section is missing.")
         if not settings.openai.emb_model:
             raise ValueError("OpenAI configuration requires 'emb_model'.")
-        if "OPENAI_API_KEY" not in os.environ:
+        if "GEMINI_API_KEY" not in os.environ:
             raise ValueError(
-                "The environment variable 'OPENAI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
+                "The environment variable 'GEMINI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
             )
-        return OpenAIEmbeddings(model=settings.openai.emb_model)
+        return GoogleGenerativeAIEmbeddings(
+            model=settings.openai.emb_model,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+        )
 
     if settings.emb_backend == EmbeddingBackend.google_vertex:
         if not settings.google_vertex:

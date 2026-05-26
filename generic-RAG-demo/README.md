@@ -141,7 +141,7 @@ Set the API keys for your chosen cloud provider (backend). This ensures that you
 
 ```text
 AZURE_OPENAI_API_KEY=your_azure_api_key
-OPENAI_API_KEY=your_openai_api_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ### Chainlit starters
