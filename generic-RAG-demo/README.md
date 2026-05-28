@@ -112,6 +112,17 @@ chainlit run generic_rag/app.py # run chainlit app
 chainlit run generic_rag/app.py -w # run and reloads the app when module changes
 
 python generic_rag/entry_app.py # run chainlit app with an entry point for (easy) debugging.
+
+### Branding (TrustVoice AI logo)
+
+Chainlit reads branding images from `public/` automatically. To replace the center logo:
+
+- overwrite `public/logo_light.png`
+- overwrite `public/logo_dark.png`
+- optionally overwrite `public/favicon.png`
+
+Then restart the app and hard-refresh the browser cache.
+
 ```
 
 All configuration options should be set in the `config.yaml` file before hand, environment It is expected at `<project_root>/config.yaml`. Please configure your `config.yaml` and `.env` file with your cloud provider (backend) of choice. See the sections below for more details.
