@@ -1,7 +1,7 @@
 [project]
-name = "Sogeti-generic-RAG-demo"
+name = "Trustvoice-AI"
 version = "0.1.0"
-description = "A Sogeti generic RAG demo"
+description = "A voice-enabled agentic RAG assistant for enterprises. It answers employee questions from trusted company data such as PDFs, internal documents, web pages, SharePoint, and blob storage. For the hackathon MVP, we will focus only on PDF/text upload, cited answers, gap detection, agentic RAG steps, and voice input/output."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

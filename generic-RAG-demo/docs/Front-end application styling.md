@@ -47,3 +47,22 @@ login_page_image = "/public/custom-background.jpg"
 
 ## 3. Dutch Translation
 ...
+
+
+## 3. Replace the default logo with TrustVoice AI
+
+If you still see a Sogeti/Capgemini logo in the center of the chat screen, Chainlit is loading the existing logo assets from `public/`.
+
+Do the following:
+
+1. Prepare your TrustVoice AI logo images:
+   - `logo_light.png` for light theme
+   - `logo_dark.png` for dark theme
+2. Replace these files in `public/`:
+   - `public/logo_light.png`
+   - `public/logo_dark.png`
+3. (Optional) Replace `public/favicon.png` with a TrustVoice AI favicon.
+4. Fully restart Chainlit.
+5. Hard-refresh the browser (`Ctrl+Shift+R`) or clear cache.
+
+> Chainlit uses these filenames automatically; no Python code change is required when file names stay the same.
