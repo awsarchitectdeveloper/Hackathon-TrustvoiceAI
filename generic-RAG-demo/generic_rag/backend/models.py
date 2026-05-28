@@ -12,6 +12,7 @@ from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace, Huggin
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings, ChatOpenAI, OpenAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_together import ChatTogether, TogetherEmbeddings
 from generic_rag.parsers.config import AppSettings, ChatBackend, EmbeddingBackend
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -73,7 +74,8 @@ def get_chat_model(settings: AppSettings) -> BaseChatModel:
                 "The environment variable 'GEMINI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
             )
         return ChatGoogleGenerativeAI(
-            model=settings.openai.chat_model, google_api_key=os.getenv("GEMINI_API_KEY")
+            model=settings.openai.chat_model,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
         )
 
     if settings.chat_backend == ChatBackend.google_vertex:
@@ -190,7 +192,8 @@ def get_embedding_model(settings: AppSettings) -> Embeddings:
                 "The environment variable 'GEMINI_API_KEY' is missing. Please set the variable in your '.env' file before running the script."
             )
         return GoogleGenerativeAIEmbeddings(
-            model=settings.openai.emb_model, google_api_key=os.getenv("GEMINI_API_KEY")
+            model=settings.openai.emb_model,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
         )
 
     if settings.emb_backend == EmbeddingBackend.google_vertex:
